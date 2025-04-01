@@ -22,11 +22,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Set up your OpenAI API key:
-```bash
-export OPENAI_API_KEY='your-api-key-here'
-```
-
+3. Set up your OpenAI API key in the `.env` file. 
 ## Usage
 
 ### Running the Unlearning Pipeline
