@@ -23,7 +23,7 @@ class JudgeModel(Enum):
 class UnlearningPipeline:
     def __init__(
         self,
-        model_name: str = "meta-llama/Llama-2-1b-hf",
+        model_name: str = "meta-llama/Llama-3.2-3B",
         judge_model: JudgeModel = JudgeModel.GPT4O,
         openai_api_key: Optional[str] = None,
         device: str = "cuda" if torch.cuda.is_available() else "cpu",
@@ -36,12 +36,25 @@ class UnlearningPipeline:
 
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.bfloat16,  # Llama 3.2 uses bfloat16 by default
             device_map="auto",
             # Enable gradient checkpointing for memory efficiency
             gradient_checkpointing=True,
+            # Llama 3.2 specific configurations
+            use_cache=True,
+            trust_remote_code=True,
+            # Add model-specific configurations
+            max_position_embeddings=128000,  # Llama 3.2 supports 128k context
+            rope_scaling={
+                "type": "linear",
+                "factor": 2.0,
+            },  # For better long context handling
         )
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name,
+            trust_remote_code=True,
+            padding_side="right",  # Important for causal language modeling
+        )
         self.judge_model = judge_model.value  # Get the string value from the enum
 
         # Initialize OpenAI client
@@ -51,6 +64,14 @@ class UnlearningPipeline:
             self.client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
         else:
             raise ValueError("OpenAI API key not provided")
+
+        # Set up the prompt template for Llama 3.2
+        self.prompt_template = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+You are a helpful AI assistant that has been trained to unlearn harmful or biased content.
+<|eot_id|><|start_header_id|>user<|end_header_id|>
+{prompt}
+<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+{response}"""
 
     def get_llm_judge_reward(
         self, prompt: str, response: str, unlearning_criteria: str
